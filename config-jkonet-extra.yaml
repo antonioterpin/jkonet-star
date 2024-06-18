@@ -1,0 +1,34 @@
+# Additional parameters required only by JKOnet
+
+otmap:
+  # optimization
+  optim:
+    weight_decay: 0.0
+    optimizer: Adam
+    lr: 0.01
+    beta1: 0.5
+    beta2: 0.9
+    eps: 0.00000001
+    grad_clip: null
+
+    n_iter: 100
+    # fploop settings
+    min_iter: 50
+    max_iter: 150
+    inner_iter: 10
+    thr: 1.0
+    beta: 1.0
+
+  # model architecture
+  model:
+    layers: [64, 64]
+    pos_weights: True
+    init_fn: normal
+
+# settings
+settings:
+  fploop: False
+  epsilon: 1
+  cvx_reg: 0.0
+  monge_gap_reg: 1.0
+  teacher_forcing: False
