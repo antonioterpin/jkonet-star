@@ -8,6 +8,7 @@ class EnumMethod(Enum):
     JKO_NET_STAR = 'jkonet-star' # Solve with jkonet*, full generality.
     JKO_NET_STAR_POTENTIAL = 'jkonet-star-potential' # Fit only potential energy.
     JKO_NET_STAR_POTENTIAL_INTERNAL = 'jkonet-star-potential-internal' # Fit potential energy + wiener process.
+    JKO_NET_STAR_TIME_POTENTIAL = 'jkonet-star-time-potential'
     JKO_NET_STAR_LINEAR = 'jkonet-star-linear' # Solve with jkonet*, linear parametrization.
     JKO_NET_STAR_LINEAR_POTENTIAL = 'jkonet-star-linear-potential' # Solve with jkonet*, linear parametrization of only the potential and internal energies.
     JKO_NET_STAR_LINEAR_POTENTIAL_INTERNAL = 'jkonet-star-linear-potential-internal' # Solve with jkonet*, linear parametrization of potential and internal energies.
@@ -34,6 +35,9 @@ def get_model(
     elif solver == EnumMethod.JKO_NET_STAR_POTENTIAL_INTERNAL:
         from models.jkonet_star import JKOnetStarPotentialInternal
         cls = JKOnetStarPotentialInternal
+    elif solver == EnumMethod.JKO_NET_STAR_TIME_POTENTIAL:
+        from models.jkonet_star import JKOnetStarTimePotential
+        cls = JKOnetStarTimePotential
     elif solver in [
         EnumMethod.JKO_NET_STAR_LINEAR, 
         EnumMethod.JKO_NET_STAR_LINEAR_POTENTIAL, 

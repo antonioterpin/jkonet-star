@@ -2,7 +2,7 @@
 train:
   eval_freq: 100
   batch_size: 250
-  epochs: 1000
+  epochs: 100
   save_locally: True
 
 #WandB

@@ -18,9 +18,9 @@ def plot_couplings(data):
                        w (weight for line width).
     """
     # Extract coordinates and weights
-    x_coords = data[:, 0:2]  # Circle coordinates
-    y_coords = data[:, 2:4]  # Cross coordinates
-    weights = data[:, 4]     # Weights for line widths
+    weights = data[:, -1]
+    x_coords = data[:, :(data.shape[1] - 1) // 2]
+    y_coords = data[:, (data.shape[1] - 1) // 2:-1]
 
     # Normalize weights for line width between a minimum and a maximum
     line_widths = 2 * (weights / weights.max())  # Normalize and scale line width by weight
@@ -111,10 +111,22 @@ def plot_level_curves(function, domain, n_samples=100, dimensions=2, save_to=Non
         fig.savefig(save_to + '.png')
     return fig
 
-def plot_predictions(predicted, data, model, save_to = None, n_particles = 100):
+
+def plot_predictions(predicted, data_dict, interval, model, save_to=None, n_particles=400):
+    if interval is None:
+        start, end = 0, max(data_dict.keys())
+    else:
+        start, end = interval
+
+    filtered_timesteps = range(start, end + 1)
+    data = np.zeros((len(filtered_timesteps), n_particles, predicted.shape[2]))
+
     # set max and min values
-    data = data[:,:n_particles,:]
+    data = data[:, :n_particles, :]
     predicted = predicted[:, :n_particles, :]
+    for i, t in enumerate(filtered_timesteps):
+        if t in data_dict:
+            data[i, :, :] = data_dict[t][:n_particles, :]
 
     x_min = np.min((np.amin(data, axis=0)[:, 0].min(), np.amin(predicted, axis=0)[:, 0].min())) - 2.0
     x_max = np.max((np.amax(data, axis=0)[:, 0].max(), np.amax(predicted, axis=0)[:, 0].max())) + 2.0
@@ -136,7 +148,7 @@ def plot_predictions(predicted, data, model, save_to = None, n_particles = 100):
     for t in range(data.shape[0]):
         x, y = data[t][:, 0], data[t][:, 1]
         ax.scatter(x, y, edgecolors=[c_data(t)],
-                    facecolor='none', label='data, t={}'.format(t), marker=colors['groundtruth']['marker'])
+                   facecolor='none', label='data, t={}'.format(t), marker=colors['groundtruth']['marker'])
         if save_to is not None:
             np.savetxt(save_to + f'-data-{t}.txt', np.column_stack(
                 (x.flatten(), y.flatten())), fmt='%-7.2f')

@@ -2,12 +2,14 @@ import os
 import argparse
 import jax
 import jax.numpy as jnp
+import numpy as np
 import matplotlib.pyplot as plt
 from utils.functions import potentials_all, interactions_all
 from utils.sde_simulator import SDESimulator
 from utils.density import GaussianMixtureModel
 from utils.ot import compute_couplings
 from utils.plotting import plot_couplings, plot_level_curves
+from collections import defaultdict
 
 def filename_from_args(args):
     """
@@ -32,50 +34,87 @@ def filename_from_args(args):
     
     return filename
 
-def generate_data_from_trajectory(folder, trajectory, n_gmm_components=10, batch_size=1000):
+def train_test_split(values, sample_labels, test_size=0.4):
+    unique_labels = np.unique(sample_labels)
+    train_indices = []
+    test_indices = []
+
+    for label in unique_labels:
+        indices = np.where(sample_labels == label)[0]
+        np.random.shuffle(indices)
+        split = int(len(indices) * (1 - test_size))
+        train_indices.extend(indices[:split])
+        test_indices.extend(indices[split:])
+
+    train_indices = jnp.array(train_indices)
+    test_indices = jnp.array(test_indices)
+
+    return values[train_indices], sample_labels[train_indices], values[test_indices], sample_labels[test_indices]
+
+def generate_data_from_trajectory(folder, values, sample_labels, n_gmm_components=10, batch_size=1000, data_type='train'):
     """
     Fits the gaussians and computes the couplings from the trajectory.
 
-    - it saves the data to file
-    - it fits a Gaussian Mixture Model to the data and saves the densities and gradients at the particles to file
-    - computes the couplings between the particles and saves them to file
-    - it plots all the information and saves the plots to file
+    - Saves the data to file
+    - Fits a Gaussian Mixture Model to the data and saves the densities and gradients at the particles to file
+    - Computes the couplings between the particles and saves them to file
+    - Plots all the information and saves the plots to file
     """
+    sample_labels = [int(label) for label in sample_labels]
+    # Group the values by sample labels
+    grouped_values = defaultdict(list)
+    for value, label in zip(values, sample_labels):
+        grouped_values[label].append(value)
+
+    # Convert lists to arrays
+    grouped_values = {label: jnp.array(values) for label, values in grouped_values.items()}
+    sorted_labels = sorted(grouped_values.keys())
+
     if n_gmm_components > 0:
         print("Fitting Gaussian Mixture Model...")
         gmm = GaussianMixtureModel()
-        gmm.fit(trajectory, args.n_gmm_components)
-        # gmm.to_file(f"data/{filename}_gmm.pkl")
-        for t in range(1, trajectory.shape[0]):
-            # plot particles
-            plt.scatter(trajectory[t, :, 0], trajectory[t, :, 1], c='blue', marker='o')
-            plt.savefig(os.path.join('out', 'plots', folder, f'density_{t}.png'))
+        gmm.fit(grouped_values, n_gmm_components)
+        cmap = plt.get_cmap('Spectral')
+
+        all_values = jnp.vstack([grouped_values[label] for label in sorted_labels])
+        x_min = jnp.min(all_values[:, 0]) * 0.9
+        x_max = jnp.max(all_values[:, 0]) * 1.1
+        y_min = jnp.min(all_values[:, 1]) * 0.9
+        y_max = jnp.max(all_values[:, 1]) * 1.1
+
+        for label in sorted_labels:
+            # Plot particles
+            plt.scatter(grouped_values[label][:, 0], grouped_values[label][:, 1],
+                        c=[cmap(float(label) / len(sorted_labels))], marker='o', s=4)
+            plt.xlim(x_min, x_max)
+            plt.ylim(y_min, y_max)
+            plt.savefig(os.path.join('out', 'plots', folder, f'density_{label}.png'))
             plt.clf()
 
     print("Computing couplings...")
-    for t in range(1, trajectory.shape[0]):
-        couplings = []
-        for i in range(int(jnp.ceil(trajectory.shape[1] / batch_size))):
-            idxs = jnp.arange(i * batch_size, min(
-                trajectory.shape[1], (i + 1) * batch_size
-            ))
-            couplings.append(compute_couplings(
-                trajectory[t - 1, idxs, :], 
-                trajectory[t, idxs, :]
-            ))
-        couplings = jnp.concatenate(couplings, axis=0)
-        jax.numpy.save(os.path.join('data', folder, f'couplings_{t}.npy'), couplings)
-        # save densities and grads
-        ys = couplings[:, (couplings.shape[1] - 1) // 2:-1]
+    for t, label in enumerate(sorted_labels[:-1]):
+        next_label = sorted_labels[t + 1]
+        values_t = grouped_values[label]
+        values_t1 = grouped_values[next_label]
+
+        # Compute couplings
+        couplings = compute_couplings(values_t, values_t1, next_label)
+        jnp.save(os.path.join('data', folder, f'couplings_{data_type}_{label}_to_{next_label}.npy'), couplings)
+        # Save densities and gradients
+        ys = couplings[:, (couplings.shape[1] - 1) // 2:-2] #Changed the 2 to match the new shape of couplings
         rho = lambda x: 0.
         if n_gmm_components > 0:
             rho = lambda x: gmm.gmm_density(t, x)
         densities = jax.vmap(rho)(ys).reshape(-1, 1)
         densities_grads = jax.vmap(jax.grad(rho))(ys)
         data = jnp.concatenate([densities, densities_grads], axis=1)
-        jax.numpy.save(os.path.join('data', folder, f'density_and_grads_{t}.npy'), data)
+        jax.numpy.save(os.path.join('data', folder, f'density_and_grads_{data_type}_{label}_to_{next_label}.npy'), data)
+        
+        # Plot couplings
         plot_couplings(couplings)
-        plt.savefig(os.path.join('out', 'plots', folder, f'couplings_{t}.png'))
+        plt.xlim(x_min, x_max)
+        plt.ylim(y_min, y_max)
+        plt.savefig(os.path.join('out', 'plots', folder, f'couplings_{data_type}_{label}_to_{next_label}.png'))
         plt.clf()
 
 def main(args):
@@ -102,7 +141,12 @@ def main(args):
             key, 
             (args.n_particles, args.dimension), minval=-4, maxval=4)
         trajectory = sde_simulator.forward_sampling(key, init_pp)
-        jax.numpy.save(os.path.join('data', folder, 'data.npy'), trajectory)
+
+        data = trajectory.reshape(trajectory.shape[0] * trajectory.shape[1], trajectory.shape[2])
+        sample_labels = jnp.repeat(jnp.arange(args.n_timesteps+1), trajectory.shape[1])
+        
+        jax.numpy.save(os.path.join('data', folder, 'data.npy'), data)
+        jax.numpy.save(os.path.join('data', folder, "sample_labels.npy"), sample_labels)
 
         # Save args to file
         with open(os.path.join('data', folder, 'args.txt'), 'w') as file:
@@ -123,10 +167,23 @@ def main(args):
     else:
         print("Loading data from file...")
         folder = args.load_from_file
-        trajectory = jax.numpy.load(os.path.join('data', folder, 'data.npy'))
+        data = jax.numpy.load(os.path.join('data', folder, 'data.npy'))
+        sample_labels = jax.numpy.load(os.path.join('data', folder, 'sample_labels.npy'))
 
-    # From here, the methodology is the same as for non-synthetic data
-    generate_data_from_trajectory(folder, trajectory, args.n_gmm_components, args.batch_size)
+    # Perform train-test split
+    train_values, train_labels, test_values, test_labels = train_test_split(data, sample_labels, test_size=args.train_test_split)
+    
+    # Save train and test data
+    jax.numpy.save(os.path.join('data', folder, 'train_data.npy'), train_values)
+    jax.numpy.save(os.path.join('data', folder, 'train_sample_labels.npy'), train_labels)
+    jax.numpy.save(os.path.join('data', folder, 'test_data.npy'), test_values)
+    jax.numpy.save(os.path.join('data', folder, 'test_sample_labels.npy'), test_labels)
+
+    # Generate data for train set
+    generate_data_from_trajectory(folder, train_values, train_labels, args.n_gmm_components, args.batch_size, data_type='train')
+
+    # Generate data for test set
+    generate_data_from_trajectory(folder, test_values, test_labels, args.n_gmm_components, args.batch_size, data_type='test')
 
     print("Done.")
 
@@ -254,6 +311,16 @@ if __name__ == '__main__':
         default=0,
         help='Set seed for the run.'
     )
+
+    #Train-test split
+    parser.add_argument(
+        '--train-test-split', 
+        type=float, 
+        default=0.4,
+        help="""Train test split.
+        
+        """
+        )
 
     args = parser.parse_args()
 

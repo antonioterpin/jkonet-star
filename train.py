@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from models import EnumMethod, get_model
 from dataset import PopulationEvalDataset
-from utils.sde_simulator import SDESimulator
+from utils.sde_simulator import SDESimulator, get_SDE_predictions
 from utils.plotting import plot_level_curves, plot_predictions
 
 # This collate function is taken from the JAX tutorial with PyTorch Data Loading
@@ -114,7 +114,12 @@ def main(args):
 
             if save_locally or args.wandb:
                 plot_path = os.path.join(plot_folder_name, 'predictions') if save_locally else None
-                trajectory_fig = plot_predictions(predictions, dataset_eval.trajectory, model=str(args.solver), save_to=plot_path)
+                trajectory_fig = plot_predictions(
+                    predictions,
+                    dataset_eval.trajectory,
+                    interval=None,
+                    model=str(args.solver),
+                    save_to=plot_path)
 
                 level_curves_potential_fig = plot_level_curves(
                     potential, ((-4, -4), (4, 4)), dimensions=dataset_eval.data_dim,

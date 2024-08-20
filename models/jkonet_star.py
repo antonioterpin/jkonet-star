@@ -7,7 +7,7 @@ from models.base import LearningDiffusionModel
 from dataset import CouplingsDataset, LinearParametrizationDataset
 from networks.energies import MLP
 from networks.optim import get_optimizer, create_train_state, create_train_state_from_params
-from networks.utils import network_grad
+from networks.utils import network_grad, network_grad_time
 
 class JKOnetStar(LearningDiffusionModel):
     def __init__(self, config, data_dim, tau) -> None:
@@ -89,10 +89,10 @@ class JKOnetStar(LearningDiffusionModel):
         return abs(internal.apply_fn({'params': internal.params}, jnp.asarray([1])).item())
 
     def train_step(self, state, sample):
-        xs, ys, ws, rho, rho_grad = sample
-        return self._train_step(state, xs, ys, ws, rho, rho_grad)
+        xs, ys, t, ws, rho, rho_grad = sample
+        return self._train_step(state, xs, ys, t, ws, rho, rho_grad)
 
-    def _train_step(self, state, xs, ys, ws, rho, rho_grad):
+    def _train_step(self, state, xs, ys, t, ws, rho, rho_grad):
         potential, internal, interaction = state
         loss, grads = jax.value_and_grad(
                 self.loss, argnums=(0, 1, 2))(
@@ -123,7 +123,7 @@ class JKOnetStarPotentialInternal(JKOnetStar):
     def get_interaction(self, _):
         return lambda _: 0.
     
-    def _train_step(self, state, xs, ys, ws, rho, rho_grad):
+    def _train_step(self, state, xs, ys, t, ws, rho, rho_grad):
         potential, internal, _ = state
         loss, grads = jax.value_and_grad(
                 self.loss, argnums=(0, 1))(
@@ -141,7 +141,7 @@ class JKOnetStarPotential(JKOnetStarPotentialInternal):
                 self._loss_potential_term(potential_params, xs, ys, ws, rho, rho_grad)
             ) + (ys - xs)) ** 2, axis=1))
     
-    def _train_step(self, state, xs, ys, ws, rho, rho_grad):
+    def _train_step(self, state, xs, ys, t, ws, rho, rho_grad):
         potential, _, _ = state
         loss, grads = jax.value_and_grad(
                 self.loss, argnums=0)(
@@ -153,6 +153,37 @@ class JKOnetStarPotential(JKOnetStarPotentialInternal):
     
     def get_beta(self, state):
         return 0.
+
+class JKOnetStarTimePotential(JKOnetStarPotential):
+    def create_state(self, rng):
+        # to allow for jit compilation
+        # train states
+        potential = create_train_state(
+            rng, self.model_potential, get_optimizer(self.config_optimizer), self.data_dim + 1)
+        internal = create_train_state(
+            rng, self.model_internal, get_optimizer(self.config_optimizer), 1)
+        interaction = create_train_state(
+            rng, self.model_interaction, get_optimizer(self.config_optimizer), self.data_dim)
+        return potential, internal, interaction
+
+    def _loss_potential_term(self, potential_params, xs, ys, t, ws, rho, rho_grad):
+        # need potential_state as parameter to compute the gradient
+        ys_concat = jnp.concatenate((ys, t[:, None]), axis=1)
+        return network_grad_time(self.model_potential, potential_params)(ys_concat)
+    def loss(self, potential_params, xs, ys, t, ws, rho, rho_grad):
+        # need potential_state as parameter to compute the gradient
+        return jnp.sum(ws * jnp.sum((self.tau * (
+            self._loss_potential_term(potential_params, xs, ys, t, ws, rho, rho_grad)
+        ) + (ys - xs)) ** 2, axis=1))
+
+    def _train_step(self, state, xs, ys, t, ws, rho, rho_grad):
+        potential, _, _ = state
+        loss, grads = jax.value_and_grad(
+            self.loss, argnums=0)(
+            potential.params, xs, ys, t, ws, rho, rho_grad)
+        potential = potential.apply_gradients(grads=grads)
+
+        return loss, (potential, _, _)
 
 
 class JKOnetStarLinear(LearningDiffusionModel):
@@ -274,7 +305,7 @@ class JKOnetStarLinear(LearningDiffusionModel):
         A = jnp.eye(self.theta_dim) * self.reg
         b = jnp.zeros((self.theta_dim,))
             
-        for xs, ys, ws, rho, rho_grad in all_samples:
+        for xs, ys, _, ws, rho, rho_grad in all_samples:
             # unbatch
             xs = xs.squeeze(axis=0)
             ys = ys.squeeze(axis=0)

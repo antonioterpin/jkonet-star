@@ -14,7 +14,7 @@ def wasserstein_couplings(xs, ys):
 
     M = ot.dist(xs, ys)
 
-    return ot.emd(a, b, M)
+    return ot.emd(a, b, M, numItermax=1000000)
 
 def wasserstein_loss(xs, ys):
     """
@@ -25,7 +25,7 @@ def wasserstein_loss(xs, ys):
 
     M = ot.dist(xs, ys)
 
-    return ot.emd2(a, b, M)
+    return ot.emd2(a, b, M, numItermax=1000000)
 
 @jax.jit
 def sinkhorn_loss(xs, ys, epsilon=1):
@@ -44,7 +44,7 @@ def sinkhorn_loss(xs, ys, epsilon=1):
     return out.reg_ot_cost
 
 
-def compute_couplings(batch, batch_next):
+def compute_couplings(batch, batch_next, time):
     """
     Computes transport between batch and batch_next.
 
@@ -62,9 +62,11 @@ def compute_couplings(batch, batch_next):
     y = batch_next[idx_t_next.flatten()]
 
     # Stack the columns so to have particle_x, particle_y, coupling_weight on each row
-    couplings = jnp.column_stack((x, y, weights.flatten()))
+    couplings = jnp.column_stack((x, y, jnp.full_like(weights.flatten(), time), weights.flatten()))
+
 
     # Pick top couplings (~transport map)
-    couplings = couplings[(-couplings[:, -1]).argsort()][0:batch.shape[0]]
+    relevant_couplings = couplings[couplings[:, -1] > 1/(10*max(batch.shape[0],batch_next.shape[0]))]
+    # couplings = couplings[(-couplings[:, -1]).argsort()][0:batch.shape[0]]
 
-    return couplings
+    return relevant_couplings

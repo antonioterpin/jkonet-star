@@ -3,6 +3,13 @@ import jax.numpy as jnp
 import jax.random as jrandom
 from typing import Callable, Union
 
+def get_SDE_predictions(model, dt, n_timesteps, potential, internal, interaction, key, init_pp):
+    if model == 'jkonet-star-time-potential':
+        sde = SDESimulator_implicit_time
+    else:
+        sde = SDESimulator
+    return sde(dt, n_timesteps, potential, internal, interaction).forward_sampling(key, init_pp)
+
 class SDESimulator:
     """
     Simulator for SDEs.
@@ -50,6 +57,58 @@ class SDESimulator:
             for i in range(1, n_timesteps + 1):
                 key, subkey = jrandom.split(key, 2)
                 pp = pp + potential_component(pp, subkey) + internal_component(pp, subkey) + interaction_component(pp, subkey)
+                trajectories.append(pp)
+            return jnp.asarray(trajectories)
+
+        self.forward_sampling = jax.jit(forward_sampling)
+
+
+class SDESimulator_implicit_time:
+    """
+    Simulator for SDEs.
+
+    Usage:
+    >>> simulator = SDESimulator(dt, n_timesteps, potential)
+    >>> simulator.forward_sampling(key, init)
+    """
+
+    def __init__(
+            self,
+            dt: float,
+            n_timesteps: int,
+            start_timestep: int,
+            potential: Union[bool, Callable],
+            internal: Union[bool, Callable, float],
+            interaction: Union[bool, Callable]):
+        self.dt = dt
+        self.n_timesteps = n_timesteps
+        self.potential = potential
+        self.sqrtdt = jnp.sqrt(2 * dt)
+
+        def potential_component_implicit(pp, t_array, key):
+            if potential:
+                def fixed_point_iteration(x, pp, t_array):
+                    concat_pos_time = jnp.concatenate([x, t_array], axis=-1)
+                    gradient = jax.grad(potential)(concat_pos_time)
+                    return pp - gradient[..., :-1] * dt
+
+                # Initial guess for implicit method
+                x = pp
+                for _ in range(50):  # Perform fixed-point iterations
+                    x = fixed_point_iteration(x, pp, t_array)
+
+                return x - pp
+            else:
+                return jnp.zeros(pp.shape)
+
+        def forward_sampling(key, init, timestep=1):
+            pp = jnp.copy(init)
+            trajectories = [pp]
+            for i in range(start_timestep, start_timestep + n_timesteps):
+                # for i in range(start_timestep, start_timestep + n_timesteps * timestep, timestep):
+                key, subkey = jrandom.split(key, 2)
+                t_array = (i - 1 + dt) * jnp.ones((pp.shape[0], 1))  # Create time array for current step
+                pp = pp + potential_component_implicit(pp, t_array, subkey)
                 trajectories.append(pp)
             return jnp.asarray(trajectories)
 
