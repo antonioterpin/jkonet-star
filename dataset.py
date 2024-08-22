@@ -2,18 +2,19 @@ import glob
 import os
 import numpy as np
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
 from torch.utils.data import Dataset
 
 from utils.functions import potentials_all, interactions_all
 from utils.ot import wasserstein_loss
-from utils.sde_simulator import SDESimulator
+from utils.sde_simulator import get_SDE_predictions
+from utils.plotting import plot_predictions
 
 from collections import defaultdict
 
 
 class PopulationDataset(Dataset):
     def __init__(self, dataset_name: str):
-        # self.trajectory = np.load(f'data/{dataset_name}/data.npy')
         self.trajectory = np.load(os.path.join('data', dataset_name, 'data.npy'))
 
     def __len__(self):
@@ -80,9 +81,10 @@ class PopulationEvalDataset(Dataset):
     T = 0
     data_dim = 0
 
-    def __init__(self, key, dataset_name: str, label='test'):
+    def __init__(self, key, dataset_name: str, solver:str, label='test_data'):
         self.key = key
-        if label == 'test':
+        self.solver = solver
+        if label == 'test_data':
             data = np.load(os.path.join('data', dataset_name, 'test_data.npy'))
             sample_labels = np.load(os.path.join('data', dataset_name, 'test_sample_labels.npy'))
         else:
@@ -99,6 +101,7 @@ class PopulationEvalDataset(Dataset):
             self.trajectory[label] = np.array(self.trajectory[label])
             self.data_dim = self.trajectory[label].shape[1]
         self.T = len(self.trajectory.keys())-1
+        # self.dt = unique_labels[1]-unique_labels[0]
         self.no_ground_truth = False
         try:
             with open(os.path.join('data', dataset_name, 'args.txt'), 'r') as file:
@@ -125,15 +128,17 @@ class PopulationEvalDataset(Dataset):
             print(f"Dataset {dataset_name} does not have a ground truth file. Skipping error computation.")
             self.no_ground_truth = True
     def _compute_separate_predictions(self, potential, beta, interaction):
-        sde_simulator = SDESimulator(
-            self.dt,
-            self.T,
-            potential,
-            beta,
-            interaction
-        )
-        return sde_simulator.forward_sampling(
-            self.key, self.trajectory[0])
+        return get_SDE_predictions(
+                    self.solver,
+                    self.dt,
+                    self.T,
+                    1,
+                    False,
+                    False,
+                    interaction,
+                    self.key,
+                    self.trajectory[0])
+
 
     def __len__(self):
         return self.trajectory[0].shape[0]
@@ -158,3 +163,47 @@ class PopulationEvalDataset(Dataset):
     
     def error_interaction(self, trajectory_predicted):
         return np.mean(np.sum((trajectory_predicted - self.trajectory_only_interaction) ** 2, axis=(0, 2)))
+
+    def error_wasserstein_one_step_ahead(self, potential, beta, interaction, key_eval, model, plot_folder_name=None):
+        error_wasserstein_one_ahead = jnp.ones(self.T)
+        for t in range(self.T):
+            init = self.trajectory[t]
+            timepoint_ahead = get_SDE_predictions(
+                    self.solver,
+                    self.dt,
+                    1,
+                    t+1,
+                    potential,
+                    beta,
+                    interaction,
+                    key_eval,
+                    init)
+            if plot_folder_name:
+                plot_filename = f'one_ahead_tp_{t + 1}'
+                plot_path = os.path.join(plot_folder_name, plot_filename)
+                prediction_fig = plot_predictions(
+                    timepoint_ahead[-1].reshape(1, -1, self.data_dim),
+                    self.trajectory,
+                    interval=(t + 1, t + 1),
+                    model=model,
+                    save_to=plot_path)
+                plt.close(prediction_fig)
+            error_wasserstein_one_ahead = error_wasserstein_one_ahead.at[t].set(
+                wasserstein_loss(timepoint_ahead[-1], jnp.asarray(self.trajectory[t + 1])))
+        return error_wasserstein_one_ahead
+
+    def error_wasserstein_cumulative(self, predictions, model, plot_folder_name=None):
+        error_wasserstein_cumulative = jnp.ones(self.T)
+        for t in range(1, self.T + 1):
+            if plot_folder_name:
+                plot_path = os.path.join(plot_folder_name, f'cum_tp_{t}')
+                trajectory_fig = plot_predictions(
+                    predictions[t].reshape(1, -1, self.data_dim),
+                    self.trajectory,
+                    interval=(t, t),
+                    model=model,
+                    save_to=plot_path)
+                plt.close(trajectory_fig)
+            error_wasserstein_cumulative = error_wasserstein_cumulative.at[t - 1].set(
+                wasserstein_loss(predictions[t], jnp.asarray(self.trajectory[t])))
+        return error_wasserstein_cumulative

@@ -112,7 +112,7 @@ def plot_level_curves(function, domain, n_samples=100, dimensions=2, save_to=Non
     return fig
 
 
-def plot_predictions(predicted, data_dict, interval, model, save_to=None, n_particles=400):
+def plot_predictions(predicted, data_dict, interval, model, save_to=None, n_particles=200):
     if interval is None:
         start, end = 0, max(data_dict.keys())
     else:

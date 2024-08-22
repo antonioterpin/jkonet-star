@@ -39,6 +39,11 @@ jkonet-star-linear-interaction:
   dark: '#69779B'
   marker: '+'
 
+jkonet-star-time-potential:
+  light: '#FFD580'
+  dark: '#FFAA33'
+  marker: '+'
+
 jkonet:
   light: '#AF8F6F'  # Light orange
   dark: '#74512D'   # Dark orange

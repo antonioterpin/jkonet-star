@@ -13,6 +13,7 @@ from models import EnumMethod, get_model
 from dataset import PopulationEvalDataset
 from utils.sde_simulator import SDESimulator, get_SDE_predictions
 from utils.plotting import plot_level_curves, plot_predictions
+from utils.load_from_wandb import parse_name
 
 # This collate function is taken from the JAX tutorial with PyTorch Data Loading
 # https://jax.readthedocs.io/en/latest/notebooks/Neural_Network_and_Data_Loading.html
@@ -48,7 +49,7 @@ def main(args):
         wandb.run.name = f"{args.solver}.{args.dataset}.{args.seed}"
 
     # Load model and dataset
-    dataset_eval = PopulationEvalDataset(key, args.dataset)
+    dataset_eval = PopulationEvalDataset(key, args.dataset, str(args.solver), args.eval)
     model = get_model(
         args.solver, config, 
         dataset_eval.data_dim, dataset_eval.dt)
@@ -89,14 +90,17 @@ def main(args):
             potential = model.get_potential(state)
             beta = model.get_beta(state)
             interaction = model.get_interaction(state)
-            predictions = SDESimulator(
+            predictions = get_SDE_predictions(
+                    str(args.solver),
                     dataset_eval.dt,
                     dataset_eval.T,
+                1,
                     potential,
                     beta,
-                    interaction
-                ).forward_sampling(key_eval, init_pp)
-            
+                    interaction,
+                    key_eval,
+                    init_pp)
+
             # plot trajectories
             plot_folder_name = os.path.join('out', 'plots', args.dataset, str(args.solver), str(epoch))
             if save_locally:
@@ -121,10 +125,10 @@ def main(args):
                     model=str(args.solver),
                     save_to=plot_path)
 
-                level_curves_potential_fig = plot_level_curves(
-                    potential, ((-4, -4), (4, 4)), dimensions=dataset_eval.data_dim,
-                    save_to=os.path.join(plot_folder_name, 'level_curves_potential') if save_locally else None
-                )
+                # level_curves_potential_fig = plot_level_curves(
+                #     potential, ((-4, -4), (4, 4)), dimensions=dataset_eval.data_dim,
+                #     save_to=os.path.join(plot_folder_name, 'level_curves_potential') if save_locally else None
+                # )
 
                 level_curves_interaction_fig = plot_level_curves(
                     interaction, ((-4, -4), (4, 4)), dimensions=dataset_eval.data_dim,
@@ -140,11 +144,29 @@ def main(args):
                     })
                 # close figs
                 plt.close(trajectory_fig)
-                plt.close(level_curves_potential_fig)
+                # plt.close(level_curves_potential_fig)
                 plt.close(level_curves_interaction_fig)
+            if config['metrics']['w_one_ahead']:
+                error_w_one_ahead = dataset_eval.error_wasserstein_one_step_ahead(
+                    potential,
+                    beta,
+                    interaction,
+                    key_eval,
+                    model=str(args.solver),
+                    plot_folder_name=plot_folder_name if save_locally else None
+                )
+                print("Test One ahead:", error_w_one_ahead)
+            if config['metrics']['w_cumulative']:
+                error_w_cumulative = dataset_eval.error_wasserstein_cumulative(
+                    predictions,
+                    model=str(args.solver),
+                    plot_folder_name=plot_folder_name if save_locally else None
+                )
+                print("Test Cumulative:", error_w_cumulative)
 
             # compute errors
             error_wasserstein = dataset_eval.error_wasserstein(predictions)
+
 
             if dataset_eval.no_ground_truth:
                 error_potential = 0
@@ -152,23 +174,29 @@ def main(args):
                 error_interaction = 0
             else:
                 error_potential = dataset_eval.error_potential(
-                    SDESimulator(
+                    get_SDE_predictions(
+                        str(args.solver),
                         dataset_eval.dt,
                         dataset_eval.T,
+                        1,
                         potential,
                         False,
-                        False
-                    ).forward_sampling(key_eval, init_pp)
+                        False,
+                        key_eval,
+                        init_pp)
                 )
                 error_internal = dataset_eval.error_internal(beta)
                 error_interaction = dataset_eval.error_interaction(
-                    SDESimulator(
+                    get_SDE_predictions(
+                        str(args.solver),
                         dataset_eval.dt,
                         dataset_eval.T,
+                        1,
                         False,
                         False,
-                        interaction
-                    ).forward_sampling(key_eval, init_pp)
+                        interaction,
+                        key_eval,
+                        init_pp)
                 )
 
             print(f"Epoch {epoch} | Wasserstein: {error_wasserstein} | Potential: {error_potential} | Internal: {error_internal} | Interaction: {error_interaction}")
@@ -203,6 +231,13 @@ if __name__ == '__main__':
         type=str, 
         help=f"""Dataset to train the model on.""",
         )
+
+    parser.add_argument(
+        '--eval',
+        type=str, default='train_data',
+        choices=['train_data', 'test_data'],
+        help=f"""Option to validate on train or test.""",
+    )
     
     parser.add_argument('--wandb', action='store_true',
                         help='Option to run with activated wandb.')

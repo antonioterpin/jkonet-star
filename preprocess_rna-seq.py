@@ -51,7 +51,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--n-components',
         type=int,
-        default=20,
+        default=5,
         help=f"""Number of components to keep in PCA.""",
         )
     parser.add_argument(

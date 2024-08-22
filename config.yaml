@@ -2,8 +2,12 @@
 train:
   eval_freq: 100
   batch_size: 250
-  epochs: 100
+  epochs: 300
   save_locally: True
+
+metrics:
+  w_one_ahead: True
+  w_cumulative: True
 
 #WandB
 wandb:

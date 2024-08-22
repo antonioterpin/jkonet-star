@@ -30,11 +30,28 @@ def filename_from_args(args):
     filename += f"dim_{args.dimension}_"
     filename += f"N_{args.n_particles}_"
     filename += f"gmm_{args.n_gmm_components}_"
-    filename += f"seed_{args.seed}"
+    filename += f"seed_{args.seed}_"
+    filename += f"split_{args.train_test_split}"
     
     return filename
 
 def train_test_split(values, sample_labels, test_size=0.4):
+    """
+        Splits the dataset into training and testing sets, ensuring the distribution of labels is preserved.
+
+        Parameters:
+        values (Union[np.ndarray, jnp.ndarray]): The data array to be split.
+        sample_labels (Union[np.ndarray, jnp.ndarray]): The corresponding labels for the data. It contains the timestep linked to each value.
+        test_size (float, optional): The proportion of the dataset to include in the test split.
+
+        Returns:
+        Tuple[Union[np.ndarray, jnp.ndarray], Union[np.ndarray, jnp.ndarray], Union[np.ndarray, jnp.ndarray], Union[np.ndarray, jnp.ndarray]]:
+            A tuple containing:
+            - Train values (Union[np.ndarray, jnp.ndarray]): Subset of the data for training.
+            - Train labels (Union[np.ndarray, jnp.ndarray]): Corresponding labels for the training data.
+            - Test values (Union[np.ndarray, jnp.ndarray]): Subset of the data for testing.
+            - Test labels (Union[np.ndarray, jnp.ndarray]): Corresponding labels for the testing data.
+        """
     unique_labels = np.unique(sample_labels)
     train_indices = []
     test_indices = []
@@ -132,6 +149,7 @@ def main(args):
         sde_simulator = SDESimulator(
             args.dt,
             args.n_timesteps,
+            1,
             potentials_all[args.potential] if args.potential != 'none' else False,
             args.beta if args.internal == 'wiener' else False,
             interactions_all[args.interaction] if args.interaction != 'none' else False
@@ -144,7 +162,7 @@ def main(args):
 
         data = trajectory.reshape(trajectory.shape[0] * trajectory.shape[1], trajectory.shape[2])
         sample_labels = jnp.repeat(jnp.arange(args.n_timesteps+1), trajectory.shape[1])
-        
+        # sample_labels = jnp.repeat(jnp.arange(args.n_timesteps + 1) * args.dt, trajectory.shape[1])
         jax.numpy.save(os.path.join('data', folder, 'data.npy'), data)
         jax.numpy.save(os.path.join('data', folder, "sample_labels.npy"), sample_labels)
 
@@ -171,19 +189,21 @@ def main(args):
         sample_labels = jax.numpy.load(os.path.join('data', folder, 'sample_labels.npy'))
 
     # Perform train-test split
-    train_values, train_labels, test_values, test_labels = train_test_split(data, sample_labels, test_size=args.train_test_split)
-    
-    # Save train and test data
-    jax.numpy.save(os.path.join('data', folder, 'train_data.npy'), train_values)
-    jax.numpy.save(os.path.join('data', folder, 'train_sample_labels.npy'), train_labels)
-    jax.numpy.save(os.path.join('data', folder, 'test_data.npy'), test_values)
-    jax.numpy.save(os.path.join('data', folder, 'test_sample_labels.npy'), test_labels)
+    if args.train_test_split != 0:
+        train_values, train_labels, test_values, test_labels = train_test_split(data, sample_labels, test_size=args.train_test_split)
+    else:
+        train_values, train_labels = data, sample_labels
 
     # Generate data for train set
+    jax.numpy.save(os.path.join('data', folder, 'train_data.npy'), train_values)
+    jax.numpy.save(os.path.join('data', folder, 'train_sample_labels.npy'), train_labels)
     generate_data_from_trajectory(folder, train_values, train_labels, args.n_gmm_components, args.batch_size, data_type='train')
 
-    # Generate data for test set
-    generate_data_from_trajectory(folder, test_values, test_labels, args.n_gmm_components, args.batch_size, data_type='test')
+    if args.train_test_split != 0:
+        # Generate data for test set
+        jax.numpy.save(os.path.join('data', folder, 'test_data.npy'), test_values)
+        jax.numpy.save(os.path.join('data', folder, 'test_sample_labels.npy'), test_labels)
+        generate_data_from_trajectory(folder, test_values, test_labels, args.n_gmm_components, args.batch_size, data_type='test')
 
     print("Done.")
 
