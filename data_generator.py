@@ -68,7 +68,7 @@ def train_test_split(values, sample_labels, test_size=0.4):
 
     return values[train_indices], sample_labels[train_indices], values[test_indices], sample_labels[test_indices]
 
-def generate_data_from_trajectory(folder, values, sample_labels, n_gmm_components=10, batch_size=1000, data_type='train'):
+def generate_data_from_trajectory(folder, values, sample_labels, n_gmm_components=10, data_type='train'):
     """
     Fits the gaussians and computes the couplings from the trajectory.
 
@@ -337,9 +337,7 @@ if __name__ == '__main__':
         '--train-test-split', 
         type=float, 
         default=0.4,
-        help="""Train test split.
-        
-        """
+        help='Train test split.'
         )
 
     args = parser.parse_args()

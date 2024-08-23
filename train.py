@@ -7,13 +7,13 @@ import argparse
 from time import time
 from tqdm import tqdm
 import numpy as np
+import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from models import EnumMethod, get_model
 from dataset import PopulationEvalDataset
-from utils.sde_simulator import SDESimulator, get_SDE_predictions
+from utils.sde_simulator import get_SDE_predictions
 from utils.plotting import plot_level_curves, plot_predictions
-from utils.load_from_wandb import parse_name
 
 # This collate function is taken from the JAX tutorial with PyTorch Data Loading
 # https://jax.readthedocs.io/en/latest/notebooks/Neural_Network_and_Data_Loading.html
@@ -125,10 +125,20 @@ def main(args):
                     model=str(args.solver),
                     save_to=plot_path)
 
-                # level_curves_potential_fig = plot_level_curves(
-                #     potential, ((-4, -4), (4, 4)), dimensions=dataset_eval.data_dim,
-                #     save_to=os.path.join(plot_folder_name, 'level_curves_potential') if save_locally else None
-                # )
+                if str(args.solver) != 'jkonet-star-time-potential':
+                    level_curves_potential_fig = plot_level_curves(
+                        potential, ((-4, -4), (4, 4)), dimensions=dataset_eval.data_dim,
+                        save_to=os.path.join(plot_folder_name, 'level_curves_potential') if save_locally else None
+                    )
+                else:
+                    for t in range(1, dataset_eval.T+1):
+                        # Generate the potential function for the current time
+                        current_potential = lambda x: potential(jnp.concatenate([x, jnp.array([t])], axis=0))
+                        level_curves_potential_fig = plot_level_curves(
+                            current_potential, ((-4, -4), (4, 4)), dimensions=dataset_eval.data_dim,
+                            save_to=os.path.join(plot_folder_name, f'level_curves_potential_t_{t}') if save_locally else None
+                        )
+                        plt.close(level_curves_potential_fig)
 
                 level_curves_interaction_fig = plot_level_curves(
                     interaction, ((-4, -4), (4, 4)), dimensions=dataset_eval.data_dim,
@@ -144,8 +154,10 @@ def main(args):
                     })
                 # close figs
                 plt.close(trajectory_fig)
-                # plt.close(level_curves_potential_fig)
+                plt.close(level_curves_potential_fig)
                 plt.close(level_curves_interaction_fig)
+
+            # compute errors
             if config['metrics']['w_one_ahead']:
                 error_w_one_ahead = dataset_eval.error_wasserstein_one_step_ahead(
                     potential,
@@ -164,7 +176,6 @@ def main(args):
                 )
                 print("Test Cumulative:", error_w_cumulative)
 
-            # compute errors
             error_wasserstein = dataset_eval.error_wasserstein(predictions)
 
 

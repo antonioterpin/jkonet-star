@@ -66,7 +66,6 @@ def compute_couplings(batch, batch_next, time):
 
 
     # Pick top couplings (~transport map)
-    relevant_couplings = couplings[couplings[:, -1] > 1/(10*max(batch.shape[0],batch_next.shape[0]))]
-    # couplings = couplings[(-couplings[:, -1]).argsort()][0:batch.shape[0]]
+    relevant_couplings = couplings[couplings[:, -1] > 1/ (10 * max(batch.shape[0],batch_next.shape[0]))]
 
     return relevant_couplings

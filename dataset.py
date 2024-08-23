@@ -101,7 +101,6 @@ class PopulationEvalDataset(Dataset):
             self.trajectory[label] = np.array(self.trajectory[label])
             self.data_dim = self.trajectory[label].shape[1]
         self.T = len(self.trajectory.keys())-1
-        # self.dt = unique_labels[1]-unique_labels[0]
         self.no_ground_truth = False
         try:
             with open(os.path.join('data', dataset_name, 'args.txt'), 'r') as file:
@@ -168,7 +167,7 @@ class PopulationEvalDataset(Dataset):
         error_wasserstein_one_ahead = jnp.ones(self.T)
         for t in range(self.T):
             init = self.trajectory[t]
-            timepoint_ahead = get_SDE_predictions(
+            predictions = get_SDE_predictions(
                     self.solver,
                     self.dt,
                     1,
@@ -182,14 +181,14 @@ class PopulationEvalDataset(Dataset):
                 plot_filename = f'one_ahead_tp_{t + 1}'
                 plot_path = os.path.join(plot_folder_name, plot_filename)
                 prediction_fig = plot_predictions(
-                    timepoint_ahead[-1].reshape(1, -1, self.data_dim),
+                    predictions[-1].reshape(1, -1, self.data_dim),
                     self.trajectory,
                     interval=(t + 1, t + 1),
                     model=model,
                     save_to=plot_path)
                 plt.close(prediction_fig)
             error_wasserstein_one_ahead = error_wasserstein_one_ahead.at[t].set(
-                wasserstein_loss(timepoint_ahead[-1], jnp.asarray(self.trajectory[t + 1])))
+                wasserstein_loss(predictions[-1], jnp.asarray(self.trajectory[t + 1])))
         return error_wasserstein_one_ahead
 
     def error_wasserstein_cumulative(self, predictions, model, plot_folder_name=None):
