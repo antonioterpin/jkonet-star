@@ -197,13 +197,13 @@ def main(args):
     # Generate data for train set
     jax.numpy.save(os.path.join('data', folder, 'train_data.npy'), train_values)
     jax.numpy.save(os.path.join('data', folder, 'train_sample_labels.npy'), train_labels)
-    generate_data_from_trajectory(folder, train_values, train_labels, args.n_gmm_components, args.batch_size, data_type='train')
+    generate_data_from_trajectory(folder, train_values, train_labels, args.n_gmm_components, data_type='train')
 
     if args.train_test_split != 0:
         # Generate data for test set
         jax.numpy.save(os.path.join('data', folder, 'test_data.npy'), test_values)
         jax.numpy.save(os.path.join('data', folder, 'test_sample_labels.npy'), test_labels)
-        generate_data_from_trajectory(folder, test_values, test_labels, args.n_gmm_components, args.batch_size, data_type='test')
+        generate_data_from_trajectory(folder, test_values, test_labels, args.n_gmm_components, data_type='test')
 
     print("Done.")
 

@@ -11,6 +11,7 @@ from utils.sde_simulator import get_SDE_predictions
 from utils.plotting import plot_predictions
 
 from collections import defaultdict
+from typing import Tuple, Optional, Callable, List
 
 
 class PopulationDataset(Dataset):
@@ -29,6 +30,13 @@ class PopulationDataset(Dataset):
 
 class CouplingsDataset(Dataset):
     def __init__(self, dataset_name: str) -> None:
+        """
+        Dataset class for loading and accessing couplings data.
+
+        Parameters:
+        dataset_name (str): The name of the dataset to load. The dataset is expected to be located in a
+                            directory named 'data/{dataset_name}' and consist of multiple .npy files.
+        """
         # load couplings for all timesteps together
         couplings = np.concatenate([np.load(f) for f in glob.glob(
             os.path.join('data', dataset_name, 'couplings_train_*.npy'))])
@@ -43,15 +51,28 @@ class CouplingsDataset(Dataset):
         self.densities_grads = self.densities[:, 1:]
         self.densities = self.densities[:, 0]
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """
+        Returns the number of samples in the dataset.
+
+        Returns:
+        int: The number of samples.
+        """
         return self.x.shape[0]
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int):
         return self.x[idx], self.y[idx], self.time[idx], self.weight[idx], self.densities[idx], self.densities_grads[
             idx]
     
 class LinearParametrizationDataset(Dataset):
-    def __init__(self, dataset_name: str):
+    def __init__(self, dataset_name: str) -> None:
+        """
+        LinearParametrizationDataset loads and organizes data for linear parametrization solver.
+
+        Parameters:
+        dataset_name (str): The name of the dataset to load. The data should be located in
+                            'data/{dataset_name}' and consist of multiple .npy files.
+        """
         couplings = [np.load(f) for f in glob.glob(
             os.path.join('data', dataset_name, 'couplings_train_*.npy'))]
 
@@ -66,22 +87,53 @@ class LinearParametrizationDataset(Dataset):
             densities[t][:,1:]
         ) for t, c in enumerate(couplings)]
         
-    def __len__(self):
+    def __len__(self) -> int:
+        """
+        Returns the number of elements in the dataset.
+
+        Returns:
+        int: The number of elements (always 1 for this dataset).
+        """
         return 1
     
-    def __getitem__(self, _):
+    def __getitem__(self, _)-> List[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+        """
+        Retrieves the dataset.
+
+        Parameters:
+        _ (any): This parameter is ignored as the entire dataset is returned.
+
+        Returns:
+        List[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+            The entire dataset as a list of tuples, where each tuple contains:
+            - Input features (np.ndarray)
+            - Target features (np.ndarray)
+            - Time information (np.ndarray)
+            - Weights (np.ndarray)
+            - Density values (np.ndarray)
+            - Gradient of densities (np.ndarray)
+        """
         return self.data
     
 class PopulationEvalDataset(Dataset):
-    potential = 'none'
-    internal = 'none'
-    beta = 0.0
-    interaction = 'none'
-    dt = 1
-    T = 0
-    data_dim = 0
+    potential: str = 'none'
+    internal: str = 'none'
+    beta: float = 0.0
+    interaction: str = 'none'
+    dt: float = 1.0
+    T: int = 0
+    data_dim: int = 0
 
-    def __init__(self, key, dataset_name: str, solver:str, label='test_data'):
+    def __init__(self, key, dataset_name: str, solver: str, label='test_data'):
+        """
+        PopulationEvalDataset loads and organizes population trajectory data for evaluation.
+
+        Parameters:
+        key (Any): A key used for random number generation or seeding.
+        dataset_name (str): The name of the dataset to load. Data should be located in 'data/{dataset_name}'.
+        solver (str): The solver method used. Primarily for plotting purposes.
+        label (str): Specifies whether to load 'test_data' or 'train_data'. Default is 'test_data'.
+        """
         self.key = key
         self.solver = solver
         if label == 'test_data':
@@ -126,44 +178,134 @@ class PopulationEvalDataset(Dataset):
         except FileNotFoundError:
             print(f"Dataset {dataset_name} does not have a ground truth file. Skipping error computation.")
             self.no_ground_truth = True
-    def _compute_separate_predictions(self, potential, beta, interaction):
+
+    def _compute_separate_predictions(
+            self,
+            potential: Callable[[jnp.ndarray], float],
+            beta: float,
+            interaction: Callable[[jnp.ndarray], float]
+    ) -> jnp.ndarray:
+        """
+        Compute separate predictions based on potential, beta, and interaction.
+
+        Parameters:
+        potential (Any): Potential function or data used in predictions.
+        beta (float): Beta parameter used in predictions.
+        interaction (Any): Interaction function or data used in predictions.
+
+        Returns:
+        np.ndarray: Predictions for the population trajectories.
+        """
         return get_SDE_predictions(
                     self.solver,
                     self.dt,
                     self.T,
                     1,
-                    False,
-                    False,
+                    potential,
+                    beta,
                     interaction,
                     self.key,
                     self.trajectory[0])
 
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """
+        Returns the number of particles at the first timestep.
+
+        Returns:
+        int: The number of particles in the first timestep.
+        """
         return self.trajectory[0].shape[0]
 
-    def __getitem__(self, idx):
-        # returns a particle at the first timestep
-        # batching means getting more particles per timestep
+    def __getitem__(self, idx: int) -> np.ndarray:
+        """
+        Retrieves a particle's features at the first timestep.
+
+        Parameters:
+        idx (int): The index of the particle to retrieve.
+
+        Returns:
+        np.ndarray: The features of the particle at the specified index and first timestep.
+        """
         return self.trajectory[0][idx, :]
 
-    def error_wasserstein(self, trajectory_predicted):
+    def error_wasserstein(self, trajectory_predicted: np.ndarray) -> float:
+        """
+        Computes the Wasserstein loss between the predicted and true trajectories.
+
+        Parameters:
+        trajectory_predicted (np.ndarray): The predicted trajectory with shape (T, n_particles, n_features).
+
+        Returns:
+        float: The total Wasserstein error over all timesteps.
+        """
         error = 0
         for t in range(1, trajectory_predicted.shape[0]):
             error += wasserstein_loss(
                         trajectory_predicted[t], jnp.asarray(self.trajectory[t]))
         return error
     
-    def error_potential(self, trajectory_predicted):
+    def error_potential(self, trajectory_predicted: np.ndarray) -> float:
+        """
+        Computes the mean squared error between the predicted trajectory and the ground truth trajectory
+        predicted using only the potential.
+
+        Parameters:
+        trajectory_predicted (np.ndarray): The predicted trajectory with shape (T, n_particles, n_features).
+
+        Returns:
+        float: The mean squared error considering only the potential.
+        """
         return np.mean(np.sum((trajectory_predicted - self.trajectory_only_potential) ** 2, axis=(0, 2)))
     
-    def error_internal(self, beta_predicted):
+    def error_internal(self, beta_predicted: float) -> float:
+        """
+        Computes the error in the internal parameter (beta).
+
+        Parameters:
+        beta_predicted (float): The predicted beta value.
+
+        Returns:
+        float: The error in the internal parameter, scaled by the trajectory length and time step.
+        """
         return np.sqrt(2) * np.abs(np.abs(beta_predicted) - np.abs(self.beta)) * self.T * self.dt
     
-    def error_interaction(self, trajectory_predicted):
+    def error_interaction(self, trajectory_predicted: np.ndarray) -> float:
+        """
+        Computes the mean squared error between the predicted trajectory and the ground truth trajectory
+        predicted using only the interaction.
+
+        Parameters:
+        trajectory_predicted (np.ndarray): The predicted trajectory with shape (T, n_particles, n_features).
+
+        Returns:
+        float: The mean squared error considering only the interaction.
+        """
         return np.mean(np.sum((trajectory_predicted - self.trajectory_only_interaction) ** 2, axis=(0, 2)))
 
-    def error_wasserstein_one_step_ahead(self, potential, beta, interaction, key_eval, model, plot_folder_name=None):
+    def error_wasserstein_one_step_ahead(
+            self,
+            potential: Callable[[jnp.ndarray], float],
+            beta: float,
+            interaction: Callable[[jnp.ndarray], float],
+            key_eval: jnp.ndarray,
+            model: str,
+            plot_folder_name: str
+    ) -> jnp.ndarray:
+        """
+        Computes the Wasserstein error for one-step-ahead predictions.
+
+        Parameters:
+        potential (Callable[[jnp.ndarray], float]): Function for potential calculations, taking a JAX array and returning a float.
+        beta (float): Beta parameter for predictions.
+        interaction (Callable[[jnp.ndarray], float]): Function for interaction calculations, taking a JAX array and returning a float.
+        key_eval (jnp.ndarray): Key used for random number generation.
+        model (str): Solver used. For plotting (if applicable).
+        plot_folder_name (str): Directory where plots should be saved.
+
+        Returns:
+        jnp.ndarray: Array of Wasserstein errors for one-step-ahead predictions.
+        """
         error_wasserstein_one_ahead = jnp.ones(self.T)
         for t in range(self.T):
             init = self.trajectory[t]
@@ -191,7 +333,23 @@ class PopulationEvalDataset(Dataset):
                 wasserstein_loss(predictions[-1], jnp.asarray(self.trajectory[t + 1])))
         return error_wasserstein_one_ahead
 
-    def error_wasserstein_cumulative(self, predictions, model, plot_folder_name=None):
+    def error_wasserstein_cumulative(
+        self,
+        predictions: jnp.ndarray,
+        model: str,
+        plot_folder_name: Optional[str] = None
+    ) -> jnp.ndarray:
+        """
+        Computes the cumulative Wasserstein error per timestep.
+
+        Parameters:
+        predictions (jnp.ndarray): Array of predicted trajectories with shape (T+1, n_particles, n_features).
+        model (str): Model object used for plotting (if applicable).
+        plot_folder_name (Optional[str]): Directory where plots should be saved. If None, no plots are saved.
+
+        Returns:
+        jnp.ndarray: Array of cumulative Wasserstein errors.
+        """
         error_wasserstein_cumulative = jnp.ones(self.T)
         for t in range(1, self.T + 1):
             if plot_folder_name:
