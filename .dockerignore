@@ -1,0 +1,6 @@
+# Ignore specific files or directories
+docs/
+media/
+out/
+tests/
+README.md

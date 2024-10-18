@@ -1,0 +1,128 @@
+# training
+groundtruth:
+  light: '#F1F1F1'
+  dark: '#C7B7A3'
+  marker: 'o'
+
+jkonet-star:
+  light: '#CDF5FD'
+  dark: '#A0E9FF'
+  marker: '+'
+
+jkonet-star-potential:
+  light: '#89CFF3'
+  dark: '#00A9FF'
+  marker: '+'
+
+jkonet-star-potential-internal:
+  light: '#75C2F6'
+  dark: '#1D5D9B'
+  marker: '+'
+
+jkonet-star-linear:
+  light: '#01A9B4'
+  dark: '#086972'
+  marker: '+'
+
+jkonet-star-linear-potential:
+  light: '#77D8D8'
+  dark: '#4CBBB9'
+  marker: '+'
+
+jkonet-star-linear-potential-internal:
+  light: '#51ADCF'
+  dark: '#0278AE'
+  marker: '+'
+
+jkonet-star-linear-interaction:
+  light: '#9692AF'
+  dark: '#69779B'
+  marker: '+'
+
+jkonet-star-time-potential:
+  light: '#FFD580'
+  dark: '#FFAA33'
+  marker: '+'
+
+jkonet:
+  light: '#AF8F6F'  # Light orange
+  dark: '#74512D'   # Dark orange
+  marker: '+'
+
+jkonet-vanilla:
+  light: '#803D3B'  # Light orange
+  dark: '#322C2B'   # Dark orange
+  marker: '+'
+
+jkonet-monge-gap:
+  light: '#5F374B'  # Light orange
+  dark: '#430A5D'   # Dark orange
+  marker: '+'
+
+# Functions
+styblinski_tang:
+  light: '#FFFF80'
+  dark: '#FF0080'
+
+holder_table:
+  light: '#FDFFC2'
+  dark: '#A3D8FF'
+
+zigzag_ridge:
+  light: '#FF204E'
+  dark: '#5D0E41'
+
+oakley_ohagan:
+  light: '#4CCD99'
+  dark: '#007F73'
+
+watershed:
+  light: '#FF7ED4'
+  dark: '#6420AA'
+
+ishigami:
+  light: '#836FFF'
+  dark: '#211951'
+
+friedman:
+  light: '#0B666A'
+  dark: '#071952'
+
+webster:
+  light: '#F3F8FF'
+  dark: '#E26EE5'
+
+sphere:
+  light: '#B6FFFA'
+  dark: '#5AB2FF'
+
+bohachevsky:
+  light: '#F8FF95'
+  dark: '#A6FF96'
+
+flowers:
+  light: '#80B3FF'
+  dark: '#687EFF'
+
+wavy_plateau:
+  light: '#F94C10'
+  dark: '#D7BBF5'
+
+double_exp:
+  light: '#EDE4FF'
+  dark: '#ACE1AF'
+
+relu:
+  light: '#97FEED'
+  dark: '#35A29F'
+
+rotational:
+  light: '#A076F9'
+  dark: '#6528F7'
+
+flat:
+  light: '#EBF400'
+  dark: '#F57D1F'
+
+
+
